@@ -46,8 +46,6 @@ with tab1:
         live_dist = st.number_input("Target Distance to Pin (Yards)", min_value=1, max_value=600, value=153)
     with col_wdir:
         shot_wind_relation = st.selectbox("Wind Relative Direction For This Shot", ["None", "Straight Into", "Straight Downwind", "Crosswind"])
-    with col_wmph = st.columns(3)[0]: # formatting boundary
-        pass
     with col_wmph:
         live_wind_mph = st.slider("Current Wind Velocity (MPH)", 0, 40, 12)
         
