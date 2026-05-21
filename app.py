@@ -44,13 +44,12 @@ st.markdown("""
         margin-bottom: 10px;
     }
     </style>
-""", unsafe_with_html=False)
+""", unsafe_allow_html=True) # <- Fixed the parameter typo here!
 
 st.title("⛳ Virtual Personal Caddie")
 st.markdown("---")
 
 # --- 1. HARDCODED HISTORICAL ROUND DATA ---
-# This serves as your background memory bank to calculate misses and show past history
 historical_shots = [
     {"hole": 1, "dist_range": "200-220", "club": "4-iron", "shape": "Right", "note": "4 iron heel blade right trying to punch"},
     {"hole": 3, "dist_range": "140-160", "club": "Iron", "shape": "Right", "note": "Approach out of rough was a push and miss right"},
@@ -75,7 +74,6 @@ grip_down_pct = st.sidebar.slider("Grip Down Distance Reduction (%)", 1, 15, 5)
 st.sidebar.markdown("---")
 st.sidebar.subheader("📐 Live Stock Bag Distances (Full Swings)")
 
-# We removed the 3/4 column entirely. The app math will compute it directly using full swing averages.
 default_bag = {
     "Club": ["Driver", "3-Wood", "Hybrid", "4-iron", "5-iron", "6-iron", "7-iron", "8-iron", "9-iron", "50-deg Wedge", "54-deg Wedge", "58-deg Wedge"],
     "Full Hard": [275, 240, 220, 205, 195, 180, 168, 155, 142, 122, 105, 85],
@@ -121,7 +119,7 @@ with col_left:
 
     st.markdown("<br>### 📋 Personalized Strategic Options", unsafe_with_html=True)
 
-    # 🛑 ALGORITHM ENGINE: Strict filtering to find Tier 1 & Tier 2 choices
+    # ALGORITHM ENGINE: Strict filtering to find Tier 1 & Tier 2 choices
     best_stock_club = None
     best_stock_mode = ""
     best_stock_dist = 999
@@ -136,7 +134,6 @@ with col_left:
     for index, row in edited_df.iterrows():
         club_name = row['Club']
         
-        # Mapping base swing options
         modes = {
             "Full Hard": row['Full Hard'],
             "Full Stock": row['Full Stock'],
@@ -208,7 +205,6 @@ with col_right:
     else:
         band, label = "200-220", "Long Range / Approach Flights"
         
-    # Query static context arrays to identify relevant miss tendencies
     filtered_past = df_history[df_history['dist_range'] == band]
     
     # Calculate historical miss patterns
