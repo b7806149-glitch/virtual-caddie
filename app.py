@@ -3,9 +3,9 @@ import pandas as pd
 import numpy as np
 
 # Set up a wide layout
-st.set_page_config(page_title="Virtual Personal Caddie", page_icon="⛳", layout="wide")
+st.set_page_config(page_title="Virtual Personal Caddie", layout="wide")
 
-# Custom CSS injection for an elite, modern Fairway/Golf Course theme
+# Custom CSS for an elite, clean Fairway theme without distracting card containers
 st.markdown("""
     <style>
     /* Main App Background - Smooth Grass/Fairway Gradient */
@@ -14,102 +14,117 @@ st.markdown("""
         color: #F8FAFC;
     }
     
-    /* Sidebar styling adjustment for contrast */
+    /* Sidebar styling adjustment for high contrast */
     [data-testid="stSidebar"] {
         background-color: #081C10 !important;
     }
     
-    /* Metric blocks mimicking a premium launch monitor layout */
-    .metric-container {
-        background-color: rgba(15, 34, 23, 0.75);
-        padding: 20px;
-        border-radius: 12px;
-        border: 1px solid #2B5B3F;
-        text-align: center;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-    }
-    
-    /* Tier 1: Recommended Stock Choice (Rich Emerald) */
-    .main-rec {
-        background-color: #1B4D32;
-        padding: 22px;
-        border-radius: 12px;
-        border-left: 6px solid #22C55E;
-        margin-bottom: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-    }
-    
-    /* Tier 2: Flighted Alternative (Warm Gold/Sand) */
-    .control-rec {
-        background-color: #78350F;
-        padding: 22px;
-        border-radius: 12px;
-        border-left: 6px solid #EAB308;
-        margin-bottom: 15px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-    }
-    
-    /* Advisory Warning (Deep Redish Brown for Danger/Alert) */
-    .advisory-box {
-        background-color: #4C1D1D;
-        padding: 20px;
-        border-radius: 12px;
-        border: 1px solid #7F1D1D;
-        margin-bottom: 15px;
-    }
-    
-    /* History card entries */
-    .history-card {
-        background-color: rgba(8, 28, 16, 0.6);
-        padding: 15px;
-        border-radius: 8px;
-        border: 1px solid #234E35;
-        margin-bottom: 10px;
-    }
-    
-    /* Make standard text input and labels pop against dark green background */
-    label, p, h3, h5 {
+    /* Clean text styling to blend beautifully with the background */
+    label, p, h3, h4, h5 {
         color: #F1F5F9 !important;
+    }
+    
+    /* Modern, unbordered strategic data tables */
+    .stDataFrame {
+        background-color: rgba(15, 34, 23, 0.4);
+        border-radius: 8px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# Clean, professional typography with the emoji logo completely removed
 st.title("Virtual Personal Caddie")
 st.markdown("Your data-driven strategic partner on the course. Adjust your stock yardages and conditions live.")
 st.markdown("---")
 
-# --- 1. HARDCODED HISTORICAL ROUND DATA ---
-historical_shots = [
-    {"hole": 1, "dist_range": "200-220", "club": "4-iron", "shape": "Right", "note": "4 iron heel blade right trying to punch"},
-    {"hole": 3, "dist_range": "140-160", "club": "Iron", "shape": "Right", "note": "Approach out of rough was a push and miss right"},
-    {"hole": 4, "dist_range": "140-160", "club": "9-iron", "shape": "Right", "note": "Hit green but slightly short with a slight cut (153 yards)"},
-    {"hole": 5, "dist_range": "70-90", "club": "54-deg Wedge", "shape": "Right", "note": "76 yard wedge shot slightly bladed"},
-    {"hole": 6, "dist_range": "210-230", "club": "Hybrid", "shape": "Right", "note": "Good hybrid hit too far to the right into water"},
-    {"hole": 7, "dist_range": "50-70", "club": "Wedge", "shape": "Right", "note": "Pushed wedge to the right by a lot (maybe 40 yards)"},
-    {"hole": 8, "dist_range": "200-220", "club": "6-iron", "shape": "Right", "note": "High right 6-iron that hit green 50 feet away"},
-    {"hole": 9, "dist_range": "90-110", "club": "Wedge", "shape": "Right", "note": "Blocked wedge shot that was into wind right and short"}
-]
-df_history = pd.DataFrame(historical_shots)
-
-# --- 2. SIDEBAR CONFIGURATION ---
-st.sidebar.header("⚙️ Pre-Round & Bag Setup")
+# --- 1. SIDEBAR CONFIGURATION ---
+st.sidebar.header("Pre-Round & Bag Setup")
 
 global_wind_dir = st.sidebar.selectbox("Pre-Round Wind Baseline Direction", ["North", "South", "East", "West", "Variable"])
-grip_down_pct = st.sidebar.slider("Grip Down Distance Reduction (%)", 1, 15, 5)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📐 Live Stock Bag Distances (Full Swings)")
+st.sidebar.subheader("Live Stock Bag Distances (Full Swings)")
 
+# Your updated yardage table baseline mapping
 default_bag = {
     "Club": ["Driver", "3-Wood", "Hybrid", "4-iron", "5-iron", "6-iron", "7-iron", "8-iron", "9-iron", "50-deg Wedge", "54-deg Wedge", "58-deg Wedge"],
-    "Full Hard": [275, 240, 220, 205, 195, 180, 168, 155, 142, 122, 105, 85],
-    "Full Stock": [260, 230, 210, 195, 185, 170, 158, 145, 132, 112, 95, 75],
-    "Full Light": [245, 215, 200, 185, 175, 160, 148, 135, 122, 102, 85, 65]
+    "Full Hard": [290, 240, 260, 220, 210, 200, 185, 175, 160, 130, 105, 85],
+    "Full Stock": [280, 230, 245, 215, 205, 195, 180, 170, 155, 125, 95, 80],
+    "Full Light": [270, 215, 230, 210, 200, 190, 175, 165, 150, 120, 100, 75]
 }
 df_stock = pd.DataFrame(default_bag)
 edited_df = st.sidebar.data_editor(df_stock, hide_index=True, num_rows="fixed")
 
+
+# --- 2. MAIN DASHBOARD ---
+col_left, col_right = st.columns([1, 1], gap="large")
+
+with col_left:
+    st.subheader("Live Shot Setup")
+    
+    live_dist = st.number_input("Target Distance to Pin (Yards)", min_value=1, max_value=600, value=153)
+    shot_wind_relation = st.selectbox("Wind Relative Direction For This Shot", ["None", "Straight Into", "Straight Downwind", "Crosswind"])
+    live_wind_mph = st.slider("Current Wind Velocity (MPH)", 0, 40, 12)
+
+    # Calculate Play-As Yardage
+    wind_adjustment = 0.0
+    if shot_wind_relation == 'Straight Into':
+        wind_adjustment = float(live_wind_mph) * 1.0  
+    elif shot_wind_relation == 'Straight Downwind':
+        wind_adjustment = float(live_wind_mph) * -0.5 
+        
+    adjusted_distance = float(live_dist) + wind_adjustment
+
+    st.markdown("---")
+    st.markdown(f"#### Play-As Target: **{adjusted_distance:.1f} Yards**")
+    st.markdown(f"Baseline setup configured against a global **{global_wind_dir}** wind system.")
+
+
+with col_right:
+    st.subheader("Calculated Matrix Options")
+    st.markdown("Computed alternatives derived entirely from your normal **Full Stock** profile:")
+
+    # Build matrix arrays for pure mathematical mapping
+    matrix_data = []
+    
+    for index, row in edited_df.iterrows():
+        club = row['Club']
+        stock_val = float(row['Full Stock'])
+        
+        # Exact requested profiles
+        grip_down_val = stock_val * 0.95        # 5% distance reduction
+        three_quarter_val = stock_val * 0.85    # 15% distance reduction
+        
+        matrix_data.append({
+            "Club": club,
+            "Full Stock": round(stock_val, 1),
+            "Grip Down (-5%)": round(grip_down_val, 1),
+            "3/4 Swing (-15%)": round(three_quarter_val, 1)
+        })
+        
+    df_matrix = pd.DataFrame(matrix_data)
+    
+    # Display the comprehensive distance breakdown table
+    st.dataframe(df_matrix, use_container_width=True, hide_index=True)
+    
+    st.markdown("##### Closest Strategic Matches To Target:")
+    
+    # Algorithm Engine: Locate execution targets closest to the adjusted yardage
+    matches = []
+    for item in matrix_data:
+        for mode in ["Full Stock", "Grip Down (-5%)", "3/4 Swing (-15%)"]:
+            dist = item[mode]
+            diff = abs(dist - adjusted_distance)
+            if diff <= 7.0: # Filter options within a tight playability window
+                matches.append((diff, item["Club"], mode, dist))
+                
+    # Sort options by absolute mathematical accuracy
+    matches.sort(key=lambda x: x[0])
+    
+    if matches:
+        for diff, club_name, shot_type, final_yards in matches[:3]:
+            st.markdown(f"• **{club_name}** executed as a *{shot_type}* — Flies **{final_yards:.1f}y** (Variance: {diff:+.1f}y)")
+    else:
+        st.markdown("*No exact calculation matches found within a 7-yard window. Reference the full matrix table above.*")
 
 # --- 3. MAIN DASHBOARD ---
 col_left, col_right = st.columns([3, 2], gap="large")
