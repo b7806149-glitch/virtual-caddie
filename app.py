@@ -91,16 +91,6 @@ edited_df = st.sidebar.data_editor(
 )
 st.session_state.bag_df = edited_df
 
-# Extract live values dynamically for background physics modeling
-try:
-    driver_stock = float(edited_df.loc[edited_df['Club'] == 'Driver', 'Full Stock'].values[0])
-    driver_disp = float(edited_df.loc[edited_df['Club'] == 'Driver', 'Base Dispersion (y)'].values[0])
-    hybrid_stock = float(edited_df.loc[edited_df['Club'] == 'Hybrid', 'Full Stock'].values[0])
-    hybrid_disp = float(edited_df.loc[edited_df['Club'] == 'Hybrid', 'Base Dispersion (y)'].values[0])
-except IndexError:
-    driver_stock, driver_disp = 285, 14
-    hybrid_stock, hybrid_disp = 245, 11
-
 # --- 2. MAIN DASHBOARD PANELS ---
 col_left, col_right = st.columns([1, 1], gap="large")
 
@@ -148,59 +138,88 @@ with col_left:
         st.markdown(f"<div class='metric-card'><small>Selected Lie</small><br><b>{lie_label}</b></div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- NEW ADDITION: HOLE STRATEGY OPTIMIZER ---
+    # --- UPDATED: FULLY INTERACTIVE TEE SHOT OPTIMIZER ---
     st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
     st.subheader("Tee Shot Strategy & Risk Assessment")
-    st.markdown("<small>Evaluate if stretching the driver pattern is statistically justified by the remaining approach window.</small>", unsafe_allow_html=True)
+    st.markdown("<small>Select any club from your bag to map the strategic look of your tee shot.</small>", unsafe_allow_html=True)
     
-    hole_length = st.number_input("Total Hole Length / Distance to Target Window (y)", min_value=100, max_value=650, value=424)
+    hole_length = st.number_input("Total Hole Length (y)", min_value=50, max_value=650, value=424)
     
-    # Calculate tee shot wind adjustments using the advanced physics profiles
-    tee_wind_adj_dr = float(live_wind_mph) * 0.85 if shot_wind_relation == "Straight Into" else (-float(live_wind_mph) * 0.45 if shot_wind_relation == "Straight Downwind" else 0)
-    tee_wind_adj_hy = float(live_wind_mph) * 1.00 if shot_wind_relation == "Straight Into" else (-float(live_wind_mph) * 0.55 if shot_wind_relation == "Straight Downwind" else 0)
+    # Dropdowns populated directly from your active club inventory
+    club_options = edited_df["Club"].tolist()
     
-    expected_dr_dist = driver_stock - tee_wind_adj_dr + (-temp_adjustment)
-    expected_hy_dist = hybrid_stock - tee_wind_adj_hy + (-temp_adjustment)
-    
-    rem_dr = max(0.0, float(hole_length) - expected_dr_dist)
-    rem_hy = max(0.0, float(hole_length) - expected_hy_dist)
-    gained_yards = expected_dr_dist - expected_hy_dist
-    
+    col_sel1, col_sel2 = st.columns(2)
+    with col_sel1:
+        tee_club_1 = st.selectbox("Aggressive / Primary Option", club_options, index=0) # Defaults to Driver
+    with col_sel2:
+        tee_club_2 = st.selectbox("Conservative / Layback Option", club_options, index=2) # Defaults to Hybrid
+
+    # Helper function to compute custom aero wind scaling based on club type
+    def get_tee_shot_data(club_name, bag_data):
+        try:
+            row = bag_data[bag_data["Club"] == club_name].iloc[0]
+            stock = float(row["Full Stock"])
+            disp = float(row["Base Dispersion (y)"])
+        except IndexError:
+            return 0.0, 0.0
+            
+        if any(w in club_name for w in ["Wedge", "9-iron", "8-iron"]):
+            aero = 1.3
+        elif any(g in club_name for g in ["Driver", "3-Wood", "Hybrid"]):
+            aero = 0.85
+        else:
+            aero = 1.0
+            
+        wind_adj = 0.0
+        if shot_wind_relation == "Straight Into":
+            wind_adj = float(live_wind_mph) * 1.30 * aero
+        elif shot_wind_relation == "Straight Downwind":
+            wind_adj = -float(live_wind_mph) * 0.60 * (1 / aero)
+            
+        expected_carry = stock - wind_adj + (-temp_adjustment)
+        remaining = max(0.0, float(hole_length) - expected_carry)
+        return expected_carry, remaining, disp
+
+    carry_1, rem_1, disp_1 = get_tee_shot_data(tee_club_1, edited_df)
+    carry_2, rem_2, disp_2 = get_tee_shot_data(tee_club_2, edited_df)
+    gained_yards = carry_1 - carry_2
+
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         st.markdown(f"""
         <div style='background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); padding:12px; border-radius:8px;'>
-            <b style='color:#FCA5A5;'>Option A: Aggressive Driver</b><br>
-            Est. Carry: <b>{expected_dr_dist:.1f}y</b><br>
-            Approach Left: <b style='color:#FCA5A5;'>{rem_dr:.1f}y</b><br>
-            Lateral Error Risk: <b>±{driver_disp}y</b>
+            <b style='color:#FCA5A5;'>Option A: {tee_club_1}</b><br>
+            Est. Carry: <b>{carry_1:.1f}y</b><br>
+            Approach Left: <b style='color:#FCA5A5;'>{rem_1:.1f}y</b><br>
+            Lateral Error Risk: <b>±{disp_1}y</b>
         </div>
         """, unsafe_allow_html=True)
     with col_t2:
         st.markdown(f"""
         <div style='background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); padding:12px; border-radius:8px;'>
-            <b style='color:#86EFAC;'>Option B: Tactical Hybrid</b><br>
-            Est. Carry: <b>{expected_hy_dist:.1f}y</b><br>
-            Approach Left: <b style='color:#86EFAC;'>{rem_hy:.1f}y</b><br>
-            Lateral Error Risk: <b>±{hybrid_disp}y</b>
+            <b style='color:#86EFAC;'>Option B: {tee_club_2}</b><br>
+            Est. Carry: <b>{carry_2:.1f}y</b><br>
+            Approach Left: <b style='color:#86EFAC;'>{rem_2:.1f}y</b><br>
+            Lateral Error Risk: <b>±{disp_2}y</b>
         </div>
         """, unsafe_allow_html=True)
         
     st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
     
-    # Strategic analysis decision tree logic
-    if rem_dr < 40:
-        st.markdown(f"💡 **Strategic Advisory:** **Hybrid is heavily favored.** Driver leaves you under 40 yards ({rem_dr:.1f}y), which pushes you into awkward partial-wedge territory. Lay back to {rem_hy:.1f}y for a comfortable, high-spin full target swing.")
-    elif gained_yards < 20:
-        st.markdown(f"💡 **Strategic Advisory:** **Take the Hybrid.** Wind/temperature models have compressed the distance gap to only {gained_yards:.1f} yards. Taking on the wider driver dispersion circle (±{driver_disp}y) yields negligible position benefits.")
-    elif rem_hy > 210 and rem_dr <= 175:
-        st.markdown(f"🔥 **Strategic Advisory:** **Driver is highly viable.** Laying back with hybrid leaves a grueling {rem_hy:.1f}y approach (long iron/wood). Driver targets a manageable short-iron window of {rem_dr:.1f}y. The extra risk significantly improves your green-in-regulation probability.")
+    # Dynamic strategy engine advisory notes
+    if rem_1 < 40 and rem_1 > 5:
+        st.markdown(f"💡 **Strategic Advisory:** **{tee_club_2} is heavily favored.** Hitting {tee_club_1} leaves you an awkward partial wedge distance of {rem_1:.1f}y. Laying back with {tee_club_2} gives you a structured {rem_2:.1f}y approach swing.")
+    elif abs(gained_yards) < 12:
+        st.markdown(f"💡 **Strategic Advisory:** **Take the shorter option ({tee_club_2}).** The calculated distance gap between these clubs is compressed to just {abs(gained_yards):.1f} yards. Taking on the wider target window dispersion of {tee_club_1} isn't statistically justified.")
+    elif rem_2 > 200 and rem_1 <= 170:
+        st.markdown(f"🔥 **Strategic Advisory:** **{tee_club_1} is highly viable.** Laying back with {tee_club_2} forces a long, low-percentage approach of {rem_2:.1f}y. Stepping up to {tee_club_1} brings you into a distinct scoring iron window of {rem_1:.1f}y.")
     else:
-        st.markdown(f"⚖️ **Strategic Advisory:** **Balanced Choice.** Driver gains {gained_yards:.1f} yards over the hybrid, leaving a short iron ({rem_dr:.1f}y vs {rem_hy:.1f}y). Choose Driver if the fairway boundary is wide; lean on Hybrid if hazard lines are tight.")
+        st.markdown(f"⚖️ **Strategic Advisory:** **Balanced Choice.** {tee_club_1} leaves a shorter look ({rem_1:.1f}y vs {rem_2:.1f}y) but features a dispersion width of ±{disp_1}y compared to ±{disp_2}y. Check hazard stakes before committing.")
         
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_right:
+    # PANEL B: Matrix Calculation Board
     st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
     st.subheader("Calculated Strategic Matrix")
     st.markdown("Dynamic alternative profiles generated with advanced club aero and lie modifiers:")
