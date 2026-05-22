@@ -28,7 +28,6 @@ st.markdown("""
         text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.85);
     }
     
-    /* Cleaned up dashboard panel container to stop layout artifacts */
     .dashboard-panel {
         background-color: rgba(10, 28, 16, 0.85);
         backdrop-filter: blur(10px);
@@ -92,11 +91,21 @@ edited_df = st.sidebar.data_editor(
 )
 st.session_state.bag_df = edited_df
 
+# Extract live values dynamically for background physics modeling
+try:
+    driver_stock = float(edited_df.loc[edited_df['Club'] == 'Driver', 'Full Stock'].values[0])
+    driver_disp = float(edited_df.loc[edited_df['Club'] == 'Driver', 'Base Dispersion (y)'].values[0])
+    hybrid_stock = float(edited_df.loc[edited_df['Club'] == 'Hybrid', 'Full Stock'].values[0])
+    hybrid_disp = float(edited_df.loc[edited_df['Club'] == 'Hybrid', 'Base Dispersion (y)'].values[0])
+except IndexError:
+    driver_stock, driver_disp = 285, 14
+    hybrid_stock, hybrid_disp = 245, 11
+
 # --- 2. MAIN DASHBOARD PANELS ---
 col_left, col_right = st.columns([1, 1], gap="large")
 
 with col_left:
-    # Opened cleanly directly inside the block to completely prevent visual pill artifacting
+    # PANEL A: Live Shot Setup
     st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
     st.subheader("Live Shot Setup")
     
@@ -124,7 +133,6 @@ with col_left:
     temp_adjustment = -(temp_variance / 10.0) * 2.0
     elevation_adjustment = float(elevation_ft) / 3.0
     
-    # Baseline play-as without club-specific aero scaling applied yet
     base_play_as = float(live_dist) + temp_adjustment + elevation_adjustment
     
     st.markdown("---")
@@ -138,6 +146,57 @@ with col_left:
     with col_m3:
         lie_label = ball_lie.split(" ")[0]
         st.markdown(f"<div class='metric-card'><small>Selected Lie</small><br><b>{lie_label}</b></div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # --- NEW ADDITION: HOLE STRATEGY OPTIMIZER ---
+    st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
+    st.subheader("Tee Shot Strategy & Risk Assessment")
+    st.markdown("<small>Evaluate if stretching the driver pattern is statistically justified by the remaining approach window.</small>", unsafe_allow_html=True)
+    
+    hole_length = st.number_input("Total Hole Length / Distance to Target Window (y)", min_value=100, max_value=650, value=424)
+    
+    # Calculate tee shot wind adjustments using the advanced physics profiles
+    tee_wind_adj_dr = float(live_wind_mph) * 0.85 if shot_wind_relation == "Straight Into" else (-float(live_wind_mph) * 0.45 if shot_wind_relation == "Straight Downwind" else 0)
+    tee_wind_adj_hy = float(live_wind_mph) * 1.00 if shot_wind_relation == "Straight Into" else (-float(live_wind_mph) * 0.55 if shot_wind_relation == "Straight Downwind" else 0)
+    
+    expected_dr_dist = driver_stock - tee_wind_adj_dr + (-temp_adjustment)
+    expected_hy_dist = hybrid_stock - tee_wind_adj_hy + (-temp_adjustment)
+    
+    rem_dr = max(0.0, float(hole_length) - expected_dr_dist)
+    rem_hy = max(0.0, float(hole_length) - expected_hy_dist)
+    gained_yards = expected_dr_dist - expected_hy_dist
+    
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        st.markdown(f"""
+        <div style='background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); padding:12px; border-radius:8px;'>
+            <b style='color:#FCA5A5;'>Option A: Aggressive Driver</b><br>
+            Est. Carry: <b>{expected_dr_dist:.1f}y</b><br>
+            Approach Left: <b style='color:#FCA5A5;'>{rem_dr:.1f}y</b><br>
+            Lateral Error Risk: <b>±{driver_disp}y</b>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_t2:
+        st.markdown(f"""
+        <div style='background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.2); padding:12px; border-radius:8px;'>
+            <b style='color:#86EFAC;'>Option B: Tactical Hybrid</b><br>
+            Est. Carry: <b>{expected_hy_dist:.1f}y</b><br>
+            Approach Left: <b style='color:#86EFAC;'>{rem_hy:.1f}y</b><br>
+            Lateral Error Risk: <b>±{hybrid_disp}y</b>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+    
+    # Strategic analysis decision tree logic
+    if rem_dr < 40:
+        st.markdown(f"💡 **Strategic Advisory:** **Hybrid is heavily favored.** Driver leaves you under 40 yards ({rem_dr:.1f}y), which pushes you into awkward partial-wedge territory. Lay back to {rem_hy:.1f}y for a comfortable, high-spin full target swing.")
+    elif gained_yards < 20:
+        st.markdown(f"💡 **Strategic Advisory:** **Take the Hybrid.** Wind/temperature models have compressed the distance gap to only {gained_yards:.1f} yards. Taking on the wider driver dispersion circle (±{driver_disp}y) yields negligible position benefits.")
+    elif rem_hy > 210 and rem_dr <= 175:
+        st.markdown(f"🔥 **Strategic Advisory:** **Driver is highly viable.** Laying back with hybrid leaves a grueling {rem_hy:.1f}y approach (long iron/wood). Driver targets a manageable short-iron window of {rem_dr:.1f}y. The extra risk significantly improves your green-in-regulation probability.")
+    else:
+        st.markdown(f"⚖️ **Strategic Advisory:** **Balanced Choice.** Driver gains {gained_yards:.1f} yards over the hybrid, leaving a short iron ({rem_dr:.1f}y vs {rem_hy:.1f}y). Choose Driver if the fairway boundary is wide; lean on Hybrid if hazard lines are tight.")
         
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -146,21 +205,18 @@ with col_right:
     st.subheader("Calculated Strategic Matrix")
     st.markdown("Dynamic alternative profiles generated with advanced club aero and lie modifiers:")
 
-    # Build matrix arrays computing mechanical swings and dynamic physics models
     matrix_data = []
     for index, row in edited_df.iterrows():
         club = row['Club']
         stock_val = float(row['Full Stock'])
         base_dispersion = float(row['Base Dispersion (y)'])
         
-        # --- ADVANCED PHYSICS 1: CLUB-SPECIFIC WIND SCALING ---
-        # High lofts/wedges have higher apexes and drag profiles, increasing wind vulnerability
         if any(w in club for w in ["Wedge", "9-iron", "8-iron"]):
-            aero_mult = 1.3  # Wedges get crushed by wind
+            aero_mult = 1.3
         elif any(g in club for g in ["Driver", "3-Wood", "Hybrid"]):
-            aero_mult = 0.85 # Boring flight paths slide under wind
+            aero_mult = 0.85
         else:
-            aero_mult = 1.0  # Mid irons standard baseline
+            aero_mult = 1.0
             
         club_wind_adj = 0.0
         if shot_wind_relation == 'Straight Into':
@@ -170,21 +226,19 @@ with col_right:
         elif shot_wind_relation == 'Crosswind':
             club_wind_adj = float(live_wind_mph) * 0.15 * aero_mult
 
-        # --- ADVANCED PHYSICS 2: LIE MODIFIERS ---
         lie_dist_mod = 1.0
         dispersion_mod = 1.0
         
         if "Flyer" in ball_lie:
-            lie_dist_mod = 1.05  # Hot flight out of light rough
-            dispersion_mod = 1.4 # High risk of unpredictable distance
+            lie_dist_mod = 1.05
+            dispersion_mod = 1.4
         elif "Heavy" in ball_lie:
-            lie_dist_mod = 0.90  # Severe speed dampening
-            dispersion_mod = 1.6 # Massive spray patterns
+            lie_dist_mod = 0.90
+            dispersion_mod = 1.6
         elif "Bunker" in ball_lie:
-            lie_dist_mod = 0.95  # Slightly clean but caught heavy
+            lie_dist_mod = 0.95
             dispersion_mod = 1.2
             
-        # Apply calculations down into the mechanical variations
         final_stock = (stock_val * lie_dist_mod) - club_wind_adj
         final_grip = ((stock_val * 0.95) * lie_dist_mod) - club_wind_adj
         final_three_quarter = ((stock_val * 0.85) * lie_dist_mod) - club_wind_adj
@@ -208,18 +262,15 @@ with col_right:
         for mode in ["Full Stock", "Grip Down", "3/4 Swing"]:
             calculated_carry = item[mode]
             
-            # Distance differential compared directly against target distance
             diff = calculated_carry - float(live_dist)
             abs_diff = abs(diff)
             disp = item["Current Dispersion"]
             
-            # Proximity window evaluation
             if abs_diff <= (disp + 4.0):
-                # PIN GUARDRAILS: Check if landing circle edge misses into dangerous ground
                 if pin_position == "Front" and (diff - (disp / 2.0)) < -3.0:
-                    continue # Too high risk of missing short off the green front edge
+                    continue
                 elif pin_position == "Back" and (diff + (disp / 2.0)) > 3.0:
-                    continue # Too high risk of flying off the back of the green
+                    continue
                     
                 matches.append((abs_diff, diff, item["Club"], mode, calculated_carry, disp))
                 
@@ -232,5 +283,5 @@ with col_right:
             • **{club_name}** ({shot_type}) — Expected Flight: **{final_yards:.1f}y** <br>&nbsp;&nbsp;<small style='color:#A1A1AA;'>Pin Miss: {abs(raw_diff):.1f}y {direction_label} | Standard Shot Dispersion Range: ±{current_disp/2:.1f}y</small>
             """, unsafe_allow_html=True)
     else:
-        st.markdown("<span style='color:#FCA5A5;'>*No high-safety matches found with current lie/wind configuration for a {pin_position} pin. Reference raw matrix table to step out of safety threshold controls.*</span>", unsafe_allow_html=True)
+        st.markdown("<span style='color:#FCA5A5;'>*No high-safety matches found with current lie/wind configuration for a {pin_position} pin.*</span>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
