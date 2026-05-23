@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import requests
 
 # Set up wide screen view
 st.set_page_config(page_title="Strategic Flight Command", layout="wide")
@@ -10,7 +9,7 @@ st.set_page_config(page_title="Strategic Flight Command", layout="wide")
 st.markdown("""
     <style>
     .stApp {
-        background: linear-gradient(rgba(10, 25, 17, 0.70), rgba(4, 12, 8, 0.85)), 
+        background: linear-gradient(rgba(10, 25, 17, 0.75), rgba(4, 12, 8, 0.9)), 
                     url('https://images.unsplash.com/photo-1535131749006-b7f58c99034b?q=80&w=2070&auto=format&fit=crop') no-repeat center center fixed;
         background-size: cover;
         color: #F8FAFC;
@@ -27,14 +26,30 @@ st.markdown("""
         text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
     }
     
-    .tactical-card {
-        background-color: rgba(12, 36, 22, 0.85);
+    .tactical-panel {
+        background-color: rgba(12, 36, 22, 0.88);
         backdrop-filter: blur(12px);
-        padding: 22px;
-        border-radius: 12px;
+        padding: 24px;
+        border-radius: 14px;
         border: 1px solid rgba(34, 197, 94, 0.3);
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
-        margin-bottom: 20px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+        margin-bottom: 25px;
+    }
+    
+    .alert-card {
+        background: rgba(239, 68, 68, 0.12);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        padding: 14px;
+        border-radius: 8px;
+        margin-top: 10px;
+    }
+    
+    .safe-card {
+        background: rgba(34, 197, 94, 0.12);
+        border: 1px solid rgba(34, 197, 94, 0.4);
+        padding: 14px;
+        border-radius: 8px;
+        margin-top: 10px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -47,192 +62,252 @@ if "bag_df" not in st.session_state:
         "Base Dispersion (y)": [14, 12, 11, 9, 8, 8, 7, 6, 6, 5, 4, 3]
     })
 
-# --- SIDEBAR CONFIGURATION ---
-st.sidebar.header("System Environmental Sync")
-course_lat = st.number_input("Latitude", value=39.678, format="%.4f")
-course_lon = st.number_input("Longitude", value=-75.752, format="%.4f")
-
-if "temp" not in st.session_state: st.session_state.temp = 75.0
-if "w_speed" not in st.session_state: st.session_state.w_speed = 8.0
-if "w_deg" not in st.session_state: st.session_state.w_deg = 180
-
-if st.sidebar.button("Fetch Live Weather Data Connection", use_container_width=True):
-    try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={course_lat}&longitude={course_lon}&current=temperature_2m,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph"
-        res = requests.get(url, timeout=4).json()
-        st.session_state.temp = float(res["current"]["temperature_2m"])
-        st.session_state.w_speed = float(res["current"]["wind_speed_10m"])
-        st.session_state.w_deg = int(res["current"]["wind_direction_10m"])
-        st.sidebar.success("Atmospheric grid synchronized!")
-    except:
-        st.sidebar.error("Grid connection failed.")
-
-air_temp = st.sidebar.slider("Air Temperature (°F)", 30, 110, int(st.session_state.temp))
-wind_speed = st.sidebar.slider("Wind Velocity (MPH)", 0, 40, int(st.session_state.w_speed))
-wind_deg = st.sidebar.slider("Wind Vector Heading (°)", 0, 360, int(st.session_state.w_deg))
+# --- SIDEBAR: MANUAL ENVIRONMENTAL CONTROL CENTER ---
+st.sidebar.header("Manual Environmental Sync")
+air_temp = st.sidebar.slider("Air Temperature (°F)", 30, 110, 75, step=5)
+wind_speed = st.sidebar.slider("Wind Velocity (MPH)", 0, 40, 10, step=1)
+wind_deg = st.sidebar.slider("Wind Source Direction Bearing (°)", 0, 360, 0, step=5, help="0° is North, 180° is South")
 
 st.sidebar.markdown("---")
+st.sidebar.subheader("Live Bag Settings")
 edited_bag = st.sidebar.data_editor(st.session_state.bag_df, hide_index=True, num_rows="fixed")
 st.session_state.bag_df = edited_bag
 
-# Global calculations
+# Global Physics Modifiers
 temp_adj = -((float(air_temp) - 75.0) / 10.0) * 2.0
 
 st.title("Strategic Design Command Center")
-st.markdown("Dynamic Dispersion Mapping & Green Probability Analytics Engine.")
+st.markdown("Probability-based execution mapping from tee to green.")
 st.markdown("---")
 
-col_left, col_right = st.columns([1, 1], gap="large")
+# --- GLOBAL HOLE ARCHITECTURE INPUTS ---
+st.markdown("<div class='tactical-panel'>", unsafe_allow_html=True)
+st.subheader("Hole Dimension & Target Line Alignment")
+col_h1, col_h2, col_h3 = st.columns(3)
+with col_h1:
+    hole_length = st.number_input("Total Hole Length / Distance from Current Position (y)", min_value=50, max_value=650, value=424)
+with col_h2:
+    target_line_heading = st.slider("Hole Target Line Heading Direction (°)", 0, 360, 0, step=5, help="The straight-line direction the hole runs.")
+with col_h3:
+    elevation_ft = st.number_input("Elevation Change (Feet: +Uphill / -Downhill)", value=0)
 
-with col_left:
-    st.markdown("<div class='tactical-card'>", unsafe_allow_html=True)
-    st.subheader("1. Setup & Target Selection")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        pin_dist = st.number_input("True Yardage to Pin (y)", min_value=1, max_value=600, value=155)
-        target_line_heading = st.slider("Target Line Path Heading (°)", 0, 360, value=0, step=5)
-    with col2:
-        club_choice = st.selectbox("Select Approach Club", edited_bag["Club"].tolist(), index=7) # Default 8-iron
-        elevation_ft = st.number_input("Slope Change (Feet: +Uphill / -Downhill)", value=0)
-        
-    st.markdown("---")
-    st.markdown("##### 2. Map Flag Location Relative to Center Green")
-    st.markdown("<small>A standard green profile maps out roughly 35 yards long by 25 yards wide.</small>", unsafe_allow_html=True)
-    
-    # Grid coordinate placements
-    pin_y = st.slider("Flag Depth (Y-Axis: -15y Front to +15y Back Collar)", -15, 15, 8, step=1)
-    pin_x = st.slider("Flag Width (X-Axis: -12y Left Margin to +12y Right Margin)", -12, 12, -7, step=1)
-    
-    # Severe Hazard Overlay Mapping Switches
-    st.markdown("##### 3. Local Perimeter Threat Configuration")
-    col_hz1, col_hz2 = st.columns(2)
-    with col_hz1:
-        left_hazard = st.checkbox("Left Side Penalty (Water/OB)", value=True)
-        front_hazard = st.checkbox("Front Edge Hazard (Deep Bunker)", value=False)
-    with col_hz2:
-        right_hazard = st.checkbox("Right Side Penalty (Water/OB)", value=False)
-        back_hazard = st.checkbox("Back Collar Hazard (Dense Forest)", value=False)
-        
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# Resolve environmental data variations
 slope_adj = float(elevation_ft) / 3.0
+
+# Calculate wind relation vector
 diff_deg = (wind_deg - target_line_heading) % 360
-if 45 <= diff_deg < 135: relation = "Crosswind (L to R)"
+if 45 <= diff_deg < 135: relation = "Crosswind (Left to Right)"
 elif 135 <= diff_deg < 225: relation = "Straight Downwind"
-elif 225 <= diff_deg < 315: relation = "Crosswind (R to L)"
+elif 225 <= diff_deg < 315: relation = "Crosswind (Right to Left)"
 else: relation = "Straight Into"
 
+st.markdown(f"**Atmospheric Influence Profile:** {relation} @ {wind_speed} MPH | **Air Density Shift:** {temp_adj:+.1f}y | **Slope Adjustment:** {slope_adj:+.1f}y")
+st.markdown("</div>", unsafe_allow_html=True)
+
+
+# --- TWO-PHASE STRATEGIC PLAYBOARD ---
+col_left, col_right = st.columns(2, gap="large")
+
+with col_left:
+    # ==========================================
+    # PHASE 1: THE TEE SHOT BLUEPRINT
+    # ==========================================
+    st.markdown("<div class='tactical-panel'>", unsafe_allow_html=True)
+    st.subheader("Phase 1: Tee Shot Risk Analyzer")
+    st.markdown("<small>Evaluate options to find the most secure, predictable landing area.</small>", unsafe_allow_html=True)
+    
+    club_options = edited_bag["Club"].tolist()
+    col_sel1, col_sel2 = st.columns(2)
+    with col_sel1:
+        tee_club_1 = st.selectbox("Aggressive Option", club_options, index=0) # Driver
+    with col_sel2:
+        tee_club_2 = st.selectbox("Conservative Layback", club_options, index=2) # Hybrid
+
+    def process_shot_prediction(club_name, bag_data):
+        row = bag_data[bag_data["Club"] == club_name].iloc[0]
+        stock = float(row["Full Stock"])
+        disp = float(row["Base Dispersion (y)"])
+        
+        aero = 0.85 if any(g in club_name for g in ["Driver", "3-Wood", "Hybrid"]) else 1.0
+        wind_penalty = 0.0
+        if "Straight Into" in relation: wind_penalty = float(wind_speed) * 1.30 * aero
+        elif "Straight Downwind" in relation: wind_penalty = -float(wind_speed) * 0.60 * (1 / aero)
+        
+        expected_carry = stock - wind_penalty + (-temp_adj)
+        remaining = max(0.0, float(hole_length) - expected_carry)
+        return expected_carry, remaining, disp
+
+    carry_1, rem_1, disp_1 = process_shot_prediction(tee_club_1, edited_bag)
+    carry_2, rem_2, disp_2 = process_shot_prediction(tee_club_2, edited_bag)
+
+    col_box1, col_box2 = st.columns(2)
+    with col_box1:
+        st.markdown(f"""
+        <div style='background:rgba(255,255,255,0.03); border-left:4px solid #F43F5E; padding:12px; border-radius:4px;'>
+            <b>{tee_club_1} Strategy</b><br>
+            Carry: <b>{carry_1:.1f}y</b><br>
+            Approach Left: <b>{rem_1:.1f}y</b><br>
+            Expected Error: <b>±{disp_1}y</b>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_box2:
+        st.markdown(f"""
+        <div style='background:rgba(255,255,255,0.03); border-left:4px solid #34D399; padding:12px; border-radius:4px;'>
+            <b>{tee_club_2} Strategy</b><br>
+            Carry: <b>{carry_2:.1f}y</b><br>
+            Approach Left: <b>{rem_2:.1f}y</b><br>
+            Expected Error: <b>±{disp_2}y</b>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
+    
+    # User overrides remaining yardage based on actual tee result or specific targets
+    st.markdown("##### Select Operational Second Shot Yardage:")
+    approach_source = st.radio("Feeding Mechanism:", ["Use Remaining from Option A", "Use Remaining from Option B", "Manual Entry Override"], horizontal=True)
+    
+    if "Option A" in approach_source:
+        active_approach_dist = rem_1
+        active_tee_disp = disp_1
+    elif "Option B" in approach_source:
+        active_approach_dist = rem_2
+        active_tee_disp = disp_2
+    else:
+        active_approach_dist = st.number_input("Enter Manual Approach Distance (y)", value=150)
+        active_tee_disp = 10.0
+        
+    st.markdown(f"Targeting Distance Locked for Approach Phase: **{active_approach_dist:.1f} Yards**")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 with col_right:
-    st.markdown("<div class='tactical-card'>", unsafe_allow_html=True)
-    st.subheader("Statistical Probability Matrix & Target Mapping")
+    # ==========================================
+    # PHASE 2: THE GREEN APPROACH MATRIX
+    # ==========================================
+    st.markdown("<div class='tactical-panel'>", unsafe_allow_html=True)
+    st.subheader("Phase 2: Green Target & Miss Mapping")
     
-    # Fetch data attributes of the active club pick
-    club_row = edited_bag[edited_bag["Club"] == club_choice].iloc[0]
-    stock_dist = float(club_row["Full Stock"])
-    base_disp = float(club_row["Base Dispersion (y)"])
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        pin_location = st.selectbox("Pin Placement Zone", ["Middle", "Tucked Front Left", "Tucked Front Right", "Tucked Back Left", "Tucked Back Right"])
+        approach_club = st.selectbox("Select Approach Club Choice", club_options, index=7) # Default 8-iron
+    with col_g2:
+        hazard_profile = st.selectbox("Immediate Severe Penalty Threat", ["None", "Left Side Hazard", "Right Side Hazard", "Front False Front / Bunker", "Back Deep Hazard"])
+
+    # Map flag locations internally on standard coordinate scale
+    pin_x, pin_y = 0, 0
+    if "Left" in pin_location: pin_x = -8
+    if "Right" in pin_location: pin_x = 8
+    if "Front" in pin_location: pin_y = -10
+    if "Back" in pin_location: pin_y = 10
+
+    # Fetch approach club specs
+    app_row = edited_bag[edited_bag["Club"] == approach_club].iloc[0]
+    app_stock = float(app_row["Full Stock"])
+    app_disp = float(app_row["Base Dispersion (y)"])
     
-    # Wind adjust logic
-    aero = 1.3 if any(w in club_choice for w in ["Wedge", "9-iron", "8-iron"]) else 1.0
-    wind_penalty = 0.0
-    if "Straight Into" in relation: wind_penalty = float(wind_speed) * 1.30 * aero
-    elif "Straight Downwind" in relation: wind_penalty = -float(wind_speed) * 0.60 * (1 / aero)
+    # Recalculate wind drop for approach swing profile
+    app_aero = 1.3 if any(w in approach_club for w in ["Wedge", "9-iron", "8-iron"]) else 1.0
+    app_wind_penalty = 0.0
+    if "Straight Into" in relation: app_wind_penalty = float(wind_speed) * 1.30 * app_aero
+    elif "Straight Downwind" in relation: app_wind_penalty = -float(wind_speed) * 0.60 * (1 / app_aero)
     
-    calculated_carry = stock_dist - wind_penalty + (-temp_adj) - slope_adj
-    
-    # Define standard geometric boundaries for a normalized green complex
-    green_length_half = 17.5 # Total length 35 yards
-    green_width_half = 12.5  # Total width 25 yards
-    
-    # PROBABILITY SIMULATION: Test aiming options systematically to evaluate safety percentages
-    best_aim_x, best_aim_y = 0.0, 0.0
-    max_safety_score = -1.0
-    optimal_gir_pct = 0.0
-    
-    # Test a coordinate matrix array around the flag layout to optimize score vectors
-    for test_x in range(-12, 13, 1):
-        for test_y in range(-15, 16, 1):
+    # True delivery distance expectation 
+    app_true_carry = app_stock - app_wind_penalty + (-temp_adj) - slope_adj
+
+    # RUN MONTE CARLO TARGET PATTERN OPTIMIZER
+    green_w, green_l = 12.5, 17.5
+    best_ax, best_ay = 0.0, 0.0
+    max_safety_val = -1000.0
+    final_gir_pct = 0.0
+
+    for tx in range(-12, 13, 1):
+        for ty in range(-15, 16, 1):
+            np.random.seed(42)
+            sim_x = np.random.normal(tx, app_disp / 3.0, 200)
+            sim_y = np.random.normal(ty, app_disp / 2.5, 200)
             
-            # Simulate a 300-shot random Gaussian error dispersion block based on personal club specs
-            np.random.seed(42) # Locked seed for responsive app stabilization
-            sim_x = np.random.normal(test_x, base_disp / 3.0, 250)
-            sim_y = np.random.normal(test_y, base_disp / 2.5, 250)
-            
-            hits = 0
-            score_penalty = 0
+            green_hits = 0
+            penalties = 0
             
             for sx, sy in zip(sim_x, sim_y):
-                # Check standard green boundary matrix intersection
-                on_green = (abs(sx) <= green_width_half) and (abs(sy) <= green_length_half)
-                
-                if on_green:
-                    hits += 1
+                if (abs(sx) <= green_w) and (abs(sy) <= green_l):
+                    green_hits += 1
                 else:
-                    # Apply steep mathematical dynamic score penalties if misses drop into configured hazards
-                    if left_hazard and sx < -green_width_half: score_penalty += 3.0
-                    if right_hazard and sx > green_width_half: score_penalty += 3.0
-                    if front_hazard and sy < -green_length_half: score_penalty += 2.0
-                    if back_hazard and sy > green_length_half: score_penalty += 2.0
-                    
-            gir_probability = (hits / 250.0) * 100.0
-            # Safety value equation seeks max greens hit with minimal penalty exposure
-            safety_score = gir_probability - score_penalty
+                    if "Left" in hazard_profile and sx < -green_w: penalties += 3.5
+                    if "Right" in hazard_profile and sx > green_w: penalties += 3.5
+                    if "Front" in hazard_profile and sy < -green_l: penalties += 2.5
+                    if "Back" in hazard_profile and sy > green_l: penalties += 2.5
             
-            if safety_score > max_safety_score:
-                max_safety_score = safety_score
-                best_aim_x, best_aim_y = test_x, test_y
-                optimal_gir_pct = gir_probability
+            pct = (green_hits / 200.0) * 100.0
+            score_metric = pct - penalties
+            
+            if score_metric > max_safety_val:
+                max_safety_val = score_metric
+                best_ax, best_ay = tx, ty
+                final_gir_pct = pct
 
-    # Calculate final targeting modifications
-    offset_x = best_aim_x - pin_x
-    offset_y = best_aim_y - pin_y
-    suggested_yardage = pin_dist + offset_y
-    
+    # Resolve target shift adjustments
+    shift_x = best_ax - pin_x
+    shift_y = best_ay - pin_y
+    optimal_play_yardage = active_approach_dist + shift_y
+
     st.markdown(f"""
-    <div style='background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.3); padding:16px; border-radius:8px;'>
-        <h4>🎯 Automated Target Alignment Verdict:</h4>
-        • Target Distance Line: <b>{suggested_yardage:.1f} Yards</b> (Play pin as {pin_dist}y)<br>
-        • Fairway Alignment Shift: <b>{abs(offset_x):.1f} Yards {"RIGHT" if offset_x > 0 else "LEFT"}</b> of Flag Line<br>
-        • Expected Green-In-Regulation (GIR): <b style='color:#4ADE80;'>{optimal_gir_pct:.1f}%</b>
+    <div style='background:rgba(52,211,153,0.06); border:1px solid rgba(52,211,153,0.3); padding:14px; border-radius:6px;'>
+        <b>Optimized Target Execution Line:</b><br>
+        • Adjusted Swing Target Distance: <b>{optimal_play_yardage:.1f} Yards</b><br>
+        • Wind-Corrected Club Delivery: <b>{app_true_carry:.1f} Yards</b> ({approach_club})<br>
+        • Aim Alignment Shift: <b>{abs(shift_x):.1f}y {"RIGHT" if shift_x > 0 else "LEFT"}</b> of Flag Line<br>
+        • Safe Green Probability: <b>{final_gir_pct:.1f}%</b>
     </div>
     """, unsafe_allow_html=True)
+
+    # OUTPUT DYNAMIC VISUAL SPATIAL CHART
+    st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+    st.markdown("##### Green Landing Space Mapping Array:")
     
-    # --- TEXT-BASED GEOMETRIC SATELLITE RADAR MATRIX ---
-    st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
-    st.markdown("##### Tactical Spatial Landing Map View:")
-    st.markdown("<small>Visualizing the green landing space matrix. **[P]** = Pin, **[X]** = Safest Optimized Target Line, **[G]** = Safe Green Surface.</small>", unsafe_allow_html=True)
-    
-    # Build a 7x13 string grid to output as a lightweight scannable spatial interface
-    grid_out = []
-    for row_y in range(14, -15, -4):
-        line_str = ""
-        for col_x in range(-12, 13, 2):
-            # Check proximity matching targets
-            is_pin = (abs(col_x - pin_x) <= 1) and (abs(row_y - pin_y) <= 2)
-            is_target = (abs(col_x - best_aim_x) <= 1) and (abs(row_y - best_aim_y) <= 2)
-            is_green = (abs(col_x) <= green_width_half) and (abs(row_y) <= green_length_half)
+    map_rows = []
+    for ry in range(16, -17, -4):
+        row_str = ""
+        for cx in range(-12, 13, 2):
+            is_pin = (abs(cx - pin_x) <= 1) and (abs(ry - pin_y) <= 2)
+            is_tgt = (abs(cx - best_ax) <= 1) and (abs(ry - best_ay) <= 2)
+            is_grn = (abs(cx) <= green_w) and (abs(ry) <= green_l)
             
-            if is_pin and is_target: line_str += " [PX] "
-            elif is_pin: line_str += "  [P]  "
-            elif is_target: line_str += "  [X]  "
-            elif is_green: line_str += "  [G]  "
+            if is_pin and is_tgt: row_str += " [PX] "
+            elif is_pin: row_str += "  [P]  "
+            elif is_tgt: row_str += "  [X]  "
+            elif is_grn: row_str += "  [G]  "
             else:
-                # Fill perimeter map margins contextually with custom hazard markers
-                if left_hazard and col_x < -green_width_half: line_str += "  🌊  "
-                elif right_hazard and col_x > green_width_half: line_str += "  🌊  "
-                elif front_hazard and row_y < -green_length_half: line_str += "  ░░  "
-                elif back_hazard and row_y > green_length_half: line_str += "  🌲  "
-                else: line_str += "  ..  "
-        grid_out.append(line_str)
+                if "Left" in hazard_profile and cx < -green_w: row_str += "  🌊  "
+                elif "Right" in hazard_profile and cx > green_w: row_str += "  🌊  "
+                elif "Front" in hazard_profile and ry < -green_l: row_str += "  ░░  "
+                elif "Back" in hazard_profile and ry > green_l: row_str += "  🌲  "
+                else: row_str += "  ..  "
+        map_rows.append(row_str)
         
-    st.code("\n".join(grid_out), language="text")
+    st.code("\n".join(map_rows), language="text")
+
+    # PREDICTED MISS MANAGEMENT LOGIC
+    st.markdown("##### Boundary Window Diagnostics (Where to Miss & By How Much):")
+    short_miss = app_true_carry - (app_disp / 2.0)
+    long_miss = app_true_carry + (app_disp / 2.0)
     
-    # Operational evaluation brief
-    st.markdown("##### Strategic Engineering Brief:")
-    if abs(offset_x) > 2 or abs(offset_y) > 2:
-        st.markdown(f"⚠️ **Target Offset Warning:** The pin is tucked heavily near boundaries. Aiming directly at the flag drops roughly half of your standard ±{base_disp}y dispersion circle into hazards. The predictive model has shifted your target center point **{abs(offset_x)}y sideways and {abs(offset_y)}y deep** to guarantee a lower average score over a 100-round tracking loop.")
-    else:
-        st.markdown("✅ **Green Light Window:** Pin position is accessible. Your active dispersion width sits comfortably inside the safety margins of the green shape template. Fire directly on the target vector path.")
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        st.markdown(f"""
+        <div style='background:rgba(255,255,255,0.02); padding:10px; border-radius:6px; border-left:4px solid #60A5FA;'>
+            <small><b>Acceptable Short Miss Bounds</b></small><br>
+            Carry: <b>{short_miss:.1f}y</b><br>
+            Result vs Pin: <b>{short_miss - active_approach_dist:+.1f}y</b>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_m2:
+        st.markdown(f"""
+        <div style='background:rgba(255,255,255,0.02); padding:10px; border-radius:6px; border-left:4px solid #F43F5E;'>
+            <small><b>Acceptable Long Miss Bounds</b></small><br>
+            Carry: <b>{long_miss:.1f}y</b><br>
+            Result vs Pin: <b>{long_miss - active_approach_dist:+.1f}y</b>
+        </div>
+        """, unsafe_allow_html=True)
         
     st.markdown("</div>", unsafe_allow_html=True)
