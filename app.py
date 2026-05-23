@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import requests  # Built-in library to ping the Open-Meteo endpoint directly
 
 # Set up a wide layout
 st.set_page_config(page_title="Virtual Personal Caddie Pro", layout="wide")
 
-# Custom CSS for premium glassmorphism overlaying a high-end golf course aesthetic
+# Premium glassmorphism layout theme styling
 st.markdown("""
     <style>
     .stApp {
@@ -68,34 +69,58 @@ st.title("Virtual Personal Caddie Pro")
 st.markdown("Advanced environmental vectoring and safety dispersion matrixing.")
 st.markdown("---")
 
-# --- 1. SIDEBAR CONFIGURATION ---
-st.sidebar.header("Pre-Round & Bag Setup")
+# --- 1. SIDEBAR CONFIGURATION (WEATHER API & BAG CONTROLS) ---
+st.sidebar.header("Pre-Round & Weather Synchronization")
 
+# Native GPS Coordinate entry fields for custom golf course tracking
+st.sidebar.markdown("##### GPS Coordinates (Course Location)")
 col_lat, col_lon = st.sidebar.columns(2)
 with col_lat:
-    air_temp = st.sidebar.slider("Air Temp (°F)", 30, 110, 75, step=5)
+    # Defaults to general university area coordinates as a stable baseline
+    course_lat = st.number_input("Latitude", value=39.678, format="%.4f")
 with col_lon:
-    st.sidebar.markdown("<div style='padding-top:22px;'></div>", unsafe_allow_html=True)
-    if st.sidebar.button("Reset Bag Defaults"):
-        del st.session_state.bag_df
-        st.rerun()
+    course_lon = st.number_input("Longitude", value=-75.752, format="%.4f")
+
+# Initialize default manually fallback numbers in state if API isn't triggered
+if "live_temp" not in st.session_state:
+    st.session_state.live_temp = 75.0
+if "live_wind_speed" not in st.session_state:
+    st.session_state.live_wind_speed = 10.0
+if "live_wind_deg" not in st.session_state:
+    st.session_state.live_wind_deg = 0
+
+if st.sidebar.button("Fetch Live Course Weather", use_container_width=True):
+    try:
+        # Pinging Open-Meteo's completely public developer api framework
+        api_url = f"https://api.open-meteo.com/v1/forecast?latitude={course_lat}&longitude={course_lon}&current=temperature_2m,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph"
+        response = requests.get(api_url, timeout=5).json()
+        
+        # Parse data variables straight down into operational session states
+        st.session_state.live_temp = float(response["current"]["temperature_2m"])
+        st.session_state.live_wind_speed = float(response["current"]["wind_speed_10m"])
+        st.session_state.live_wind_deg = int(response["current"]["wind_direction_10m"])
+        st.sidebar.success("Weather metrics updated live!")
+    except Exception as e:
+        st.sidebar.error("Could not reach weather grid. Falling back to manual dials.")
+
+# Dials display either the parsed API values or manual overrides smoothly
+air_temp = st.sidebar.slider("Air Temp (°F)", 30, 110, value=int(st.session_state.live_temp), step=1)
+live_wind_mph = st.sidebar.slider("Wind Velocity (MPH)", 0, 40, value=int(st.session_state.live_wind_speed), step=1)
+wind_direction_heading = st.sidebar.slider("Wind Source Bearing Angle (°)", 0, 360, value=int(st.session_state.live_wind_deg), step=5)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("Live Active Bag Profile")
+if st.sidebar.button("Reset Bag Defaults"):
+    del st.session_state.bag_df
+    st.rerun()
 
-edited_df = st.sidebar.data_editor(
-    st.session_state.bag_df, 
-    hide_index=True, 
-    num_rows="fixed", 
-    key="persistent_data_editor"
-)
+st.sidebar.subheader("Live Active Bag Profile")
+edited_df = st.sidebar.data_editor(st.session_state.bag_df, hide_index=True, num_rows="fixed", key="persistent_data_editor")
 st.session_state.bag_df = edited_df
 
 # --- 2. MAIN DASHBOARD PANELS ---
 col_left, col_right = st.columns([1, 1], gap="large")
 
 with col_left:
-    # PANEL A: Live Shot Setup
     st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
     st.subheader("Live Shot Setup")
     
@@ -111,14 +136,26 @@ with col_left:
     with col_e2:
         ball_lie = st.selectbox("Ball Lie Condition", ["Fairway", "Flyer Rough (+5% Dist, -Spin)", "Heavy Rough (-10% Dist)", "Fairway Bunker (-5% Dist)"])
     
-    st.markdown("##### Dynamic Ball Flight Wind Vectors")
-    col_w1, col_w2 = st.columns(2)
-    with col_w1:
-        shot_wind_relation = st.selectbox("Wind Vector Relative Direction", ["None", "Straight Into", "Straight Downwind", "Crosswind"])
-    with col_w2:
-        live_wind_mph = st.slider("Wind Velocity (MPH)", 0, 40, 12)
+    # CALCULATE SHOT RELATIVE DIRECTION VECTOR VIA TARGET HEADING vs WIND ANGLE
+    st.markdown("##### Target Line Heading Vector Alignment")
+    target_heading = st.slider("Target Line Heading Direction (°)", 0, 360, value=0, step=5, help="Direction you are hitting toward. 0° is North, 90° East, etc.")
 
-    # Global Environmental Calculations (Base)
+    # Calculate net angle difference to find relative heading vector (Headwind vs Tailwind)
+    angle_diff = (wind_direction_heading - target_heading) % 360
+    
+    # Mathematical classification maps degrees directly to flight impact zones
+    if 45 <= angle_diff < 135:
+        shot_wind_relation = "Crosswind (Left to Right)"
+    elif 135 <= angle_diff < 225:
+        shot_wind_relation = "Straight Downwind"
+    elif 225 <= angle_diff < 315:
+        shot_wind_relation = "Crosswind (Right to Left)"
+    else:
+        shot_wind_relation = "Straight Into"
+
+    st.markdown(f"Mapped Relative Vector Path: **{shot_wind_relation}**")
+
+    # Global Environmental Baseline Calculations
     temp_variance = float(air_temp) - 75.0
     temp_adjustment = -(temp_variance / 10.0) * 2.0
     elevation_adjustment = float(elevation_ft) / 3.0
@@ -130,50 +167,39 @@ with col_left:
     
     col_m1, col_m2, col_m3 = st.columns(3)
     with col_m1:
-        st.markdown(f"<div class='metric-card'><small>Air Density</small><br><b>{temp_adjustment:+.1f}y</b></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-card'><small>Air Temp (Live)</small><br><b>{air_temp}°F</b></div>", unsafe_allow_html=True)
     with col_m2:
-        st.markdown(f"<div class='metric-card'><small>Slope Factor</small><br><b>{elevation_adjustment:+.1f}y</b></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-card'><small>Wind (Live)</small><br><b>{live_wind_mph} MPH</b></div>", unsafe_allow_html=True)
     with col_m3:
-        lie_label = ball_lie.split(" ")[0]
-        st.markdown(f"<div class='metric-card'><small>Selected Lie</small><br><b>{lie_label}</b></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='metric-card'><small>Wind Angle</small><br><b>{wind_direction_heading}°</b></div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # --- UPDATED: FULLY INTERACTIVE TEE SHOT OPTIMIZER ---
+    # --- INTERACTIVE TEE SHOT OPTIMIZER ---
     st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
     st.subheader("Tee Shot Strategy & Risk Assessment")
-    st.markdown("<small>Select any club from your bag to map the strategic look of your tee shot.</small>", unsafe_allow_html=True)
     
     hole_length = st.number_input("Total Hole Length (y)", min_value=50, max_value=650, value=424)
-    
-    # Dropdowns populated directly from your active club inventory
     club_options = edited_df["Club"].tolist()
     
     col_sel1, col_sel2 = st.columns(2)
     with col_sel1:
-        tee_club_1 = st.selectbox("Aggressive / Primary Option", club_options, index=0) # Defaults to Driver
+        tee_club_1 = st.selectbox("Aggressive / Primary Option", club_options, index=0)
     with col_sel2:
-        tee_club_2 = st.selectbox("Conservative / Layback Option", club_options, index=2) # Defaults to Hybrid
+        tee_club_2 = st.selectbox("Conservative / Layback Option", club_options, index=2)
 
-    # Helper function to compute custom aero wind scaling based on club type
     def get_tee_shot_data(club_name, bag_data):
         try:
             row = bag_data[bag_data["Club"] == club_name].iloc[0]
             stock = float(row["Full Stock"])
             disp = float(row["Base Dispersion (y)"])
         except IndexError:
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
             
-        if any(w in club_name for w in ["Wedge", "9-iron", "8-iron"]):
-            aero = 1.3
-        elif any(g in club_name for g in ["Driver", "3-Wood", "Hybrid"]):
-            aero = 0.85
-        else:
-            aero = 1.0
-            
+        aero = 0.85 if any(g in club_name for g in ["Driver", "3-Wood", "Hybrid"]) else 1.0
         wind_adj = 0.0
-        if shot_wind_relation == "Straight Into":
+        if "Straight Into" in shot_wind_relation:
             wind_adj = float(live_wind_mph) * 1.30 * aero
-        elif shot_wind_relation == "Straight Downwind":
+        elif "Straight Downwind" in shot_wind_relation:
             wind_adj = -float(live_wind_mph) * 0.60 * (1 / aero)
             
         expected_carry = stock - wind_adj + (-temp_adjustment)
@@ -206,23 +232,19 @@ with col_left:
         
     st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
     
-    # Dynamic strategy engine advisory notes
     if rem_1 < 40 and rem_1 > 5:
-        st.markdown(f"💡 **Strategic Advisory:** **{tee_club_2} is heavily favored.** Hitting {tee_club_1} leaves you an awkward partial wedge distance of {rem_1:.1f}y. Laying back with {tee_club_2} gives you a structured {rem_2:.1f}y approach swing.")
+        st.markdown(f"💡 **Strategic Advisory:** **{tee_club_2} is heavily favored.** Hitting {tee_club_1} leaves an awkward partial wedge distance of {rem_1:.1f}y.")
     elif abs(gained_yards) < 12:
-        st.markdown(f"💡 **Strategic Advisory:** **Take the shorter option ({tee_club_2}).** The calculated distance gap between these clubs is compressed to just {abs(gained_yards):.1f} yards. Taking on the wider target window dispersion of {tee_club_1} isn't statistically justified.")
+        st.markdown(f"💡 **Strategic Advisory:** **Take the shorter option ({tee_club_2}).** The calculated distance gap between these clubs is compressed to just {abs(gained_yards):.1f} yards.")
     elif rem_2 > 200 and rem_1 <= 170:
-        st.markdown(f"🔥 **Strategic Advisory:** **{tee_club_1} is highly viable.** Laying back with {tee_club_2} forces a long, low-percentage approach of {rem_2:.1f}y. Stepping up to {tee_club_1} brings you into a distinct scoring iron window of {rem_1:.1f}y.")
+        st.markdown(f"🔥 **Strategic Advisory:** **{tee_club_1} is highly viable.** Laying back leaves a grueling long-iron approach of {rem_2:.1f}y.")
     else:
-        st.markdown(f"⚖️ **Strategic Advisory:** **Balanced Choice.** {tee_club_1} leaves a shorter look ({rem_1:.1f}y vs {rem_2:.1f}y) but features a dispersion width of ±{disp_1}y compared to ±{disp_2}y. Check hazard stakes before committing.")
-        
+        st.markdown(f"⚖️ **Strategic Advisory:** **Balanced Choice.** {tee_club_1} leaves a shorter look but features a wider dispersion pattern.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 with col_right:
-    # PANEL B: Matrix Calculation Board
     st.markdown("<div class='dashboard-panel'>", unsafe_allow_html=True)
     st.subheader("Calculated Strategic Matrix")
-    st.markdown("Dynamic alternative profiles generated with advanced club aero and lie modifiers:")
 
     matrix_data = []
     for index, row in edited_df.iterrows():
@@ -230,33 +252,24 @@ with col_right:
         stock_val = float(row['Full Stock'])
         base_dispersion = float(row['Base Dispersion (y)'])
         
-        if any(w in club for w in ["Wedge", "9-iron", "8-iron"]):
-            aero_mult = 1.3
-        elif any(g in club for g in ["Driver", "3-Wood", "Hybrid"]):
-            aero_mult = 0.85
-        else:
-            aero_mult = 1.0
+        aero_mult = 1.3 if any(w in club for w in ["Wedge", "9-iron", "8-iron"]) else (0.85 if any(g in club for g in ["Driver", "3-Wood", "Hybrid"]) else 1.0)
             
         club_wind_adj = 0.0
-        if shot_wind_relation == 'Straight Into':
+        if "Straight Into" in shot_wind_relation:
             club_wind_adj = float(live_wind_mph) * 1.30 * aero_mult
-        elif shot_wind_relation == 'Straight Downwind':
+        elif "Straight Downwind" in shot_wind_relation:
             club_wind_adj = float(live_wind_mph) * -0.60 * (1 / aero_mult)
-        elif shot_wind_relation == 'Crosswind':
+        elif "Crosswind" in shot_wind_relation:
             club_wind_adj = float(live_wind_mph) * 0.15 * aero_mult
 
         lie_dist_mod = 1.0
         dispersion_mod = 1.0
-        
         if "Flyer" in ball_lie:
-            lie_dist_mod = 1.05
-            dispersion_mod = 1.4
+            lie_dist_mod = 1.05; dispersion_mod = 1.4
         elif "Heavy" in ball_lie:
-            lie_dist_mod = 0.90
-            dispersion_mod = 1.6
+            lie_dist_mod = 0.90; dispersion_mod = 1.6
         elif "Bunker" in ball_lie:
-            lie_dist_mod = 0.95
-            dispersion_mod = 1.2
+            lie_dist_mod = 0.95; dispersion_mod = 1.2
             
         final_stock = (stock_val * lie_dist_mod) - club_wind_adj
         final_grip = ((stock_val * 0.95) * lie_dist_mod) - club_wind_adj
@@ -275,12 +288,10 @@ with col_right:
     st.dataframe(df_matrix.drop(columns=["Current Dispersion"]), use_container_width=True, hide_index=True)
     
     st.markdown("##### Safest Strategic Matches (Factoring Pin Protection & Ball Dispersion):")
-    
     matches = []
     for item in matrix_data:
         for mode in ["Full Stock", "Grip Down", "3/4 Swing"]:
             calculated_carry = item[mode]
-            
             diff = calculated_carry - float(live_dist)
             abs_diff = abs(diff)
             disp = item["Current Dispersion"]
@@ -290,17 +301,13 @@ with col_right:
                     continue
                 elif pin_position == "Back" and (diff + (disp / 2.0)) > 3.0:
                     continue
-                    
                 matches.append((abs_diff, diff, item["Club"], mode, calculated_carry, disp))
                 
     matches.sort(key=lambda x: x[0])
-    
     if matches:
         for abs_diff, raw_diff, club_name, shot_type, final_yards, current_disp in matches[:3]:
             direction_label = "long" if raw_diff > 0 else "short"
-            st.markdown(f"""
-            • **{club_name}** ({shot_type}) — Expected Flight: **{final_yards:.1f}y** <br>&nbsp;&nbsp;<small style='color:#A1A1AA;'>Pin Miss: {abs(raw_diff):.1f}y {direction_label} | Standard Shot Dispersion Range: ±{current_disp/2:.1f}y</small>
-            """, unsafe_allow_html=True)
+            st.markdown(f"• **{club_name}** ({shot_type}) — Expected Flight: **{final_yards:.1f}y** <br>&nbsp;&nbsp;<small style='color:#A1A1AA;'>Pin Miss: {abs(raw_diff):.1f}y {direction_label} | Standard Shot Dispersion Range: ±{current_disp/2:.1f}y</small>", unsafe_allow_html=True)
     else:
-        st.markdown("<span style='color:#FCA5A5;'>*No high-safety matches found with current lie/wind configuration for a {pin_position} pin.*</span>", unsafe_allow_html=True)
+        st.markdown("<span style='color:#FCA5A5;'>*No high-safety matches found with current configurations.*</span>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
